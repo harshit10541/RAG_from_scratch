@@ -7,6 +7,13 @@ import numpy as np
 import json
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+
 
 
 def chunking(directory_path, tokenizer, chunk_size, para_separator, separator):
@@ -71,7 +78,7 @@ def map_document_embeddings(documents, tokenizer, model):
 
 def compute_embeddings(token, tokenizer, model):
     query_inputs = tokenizer(query, return_tensors="pt", padding = True, truncation=True)
-    query_embeddings = model(**query_inputs).last_hidden_state.mean(dim = 1).squeeze().toList()
+    query_embeddings = model(**query_inputs).last_hidden_state.mean(dim = 1).squeeze().tolist()
     return query_embeddings
 
 
@@ -104,7 +111,7 @@ def retrieve_top_results(sorted_scores):
 
 def save_json(path, data):
     with open(path, 'w') as f:
-        json.dump(data, f, indet = 4)
+        json.dump(data, f, indent = 4)
 
 def read_json(path):
     with open(path, 'r') as f:
@@ -117,6 +124,24 @@ def retrieve_text(top_results, document_data):
     related_text = document_data[doc_id][chunk_id]
     return related_text
 
+def generate_llm_response(gemini_model, query, relevant_text):
+    template = """
+        You are an intelligent search engine. You will be provided with some retrieved context, as well as the users query.
+
+        Your job is to understand the request, and answer based on the retrieved context.
+        Here is context:
+
+        <context>
+        {context}
+        </context>
+
+        Question: {question}
+    """
+
+    prompt = ChatPromptTemplate.from_template(template = template)
+    chain = prompt | gemini_model ##pipe operator from langchain
+    response = chain.invoke({"context": relevant_text["text"], "question": query}) ##invoke chain
+    return response
 
 if __name__ == "__main__":
     directory_path = "documents"
@@ -128,7 +153,13 @@ if __name__ == "__main__":
     para_separator = " /n /n"
     separator = " "
     top_k = 2
-    openai_model = ChatOpenAI(model = "gpt-3.5-turbo")
+    # openai_model = ChatOpenAI(model = "gpt-3.5-turbo")
+    gemini_model = ChatGoogleGenerativeAI(model = "gemini-1.5-flash")
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if (api_key):
+        print("api key found")
+    else:
+        print("api key not found")
 
     ##creating document store with chunk id, doc id and text
     documents = chunking(directory_path, tokenizer, chunk_size, para_separator, separator)
@@ -157,3 +188,8 @@ if __name__ == "__main__":
     relevant_text = retrieve_text(top_results, document_data)
 
     print (relevant_text)
+
+    print(relevant_text["text"])
+
+    response = generate_llm_response(gemini_model, query, relevant_text)
+    print(response)
